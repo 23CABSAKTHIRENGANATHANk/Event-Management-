@@ -11,6 +11,7 @@ const SIDEBARS = {
         { label: '🎓 Students', href: '/pages/students.html', id: 'students' },
         { label: '📅 Events', href: '/pages/events.html', id: 'events' },
         { label: '📝 Registrations', href: '/pages/registrations.html', id: 'registrations' },
+        { label: '🔑 Auth Management', href: '/pages/auth-management.html', id: 'auth-management' },
         { label: '📈 Reports', href: '/pages/reports.html', id: 'reports' },
     ],
     staff: [
