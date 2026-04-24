@@ -1,0 +1,8 @@
+flask
+pymongo
+flask-cors
+python-dotenv
+flask-session
+bcrypt
+waitress
+gunicorn

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Registrations — EMS</title>
+    <link rel="stylesheet" href="/css/style.css" />
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <aside class="sidebar" id="sidebar"></aside>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <div class="main-content">
+            <nav class="navbar">
+                <div class="navbar-left">
+                    <button class="btn-menu-toggle" id="menuToggle">☰</button>
+                    <div class="navbar-title">Registrations</div>
+                </div>
+                <div class="navbar-right">
+                    <button class="btn btn-secondary" id="exportBtn" onclick="exportCSV()">⬇️ Export CSV</button>
+                </div>
+            </nav>
+
+            <div class="page-content">
+                <div class="toolbar">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" class="form-control" id="searchInput" placeholder="Search registrations…"
+                            oninput="filterTable()" />
+                    </div>
+                    <select class="form-control" id="eventFilter" style="max-width:220px;" onchange="filterTable()">
+                        <option value="">All Events</option>
+                    </select>
+                    <select class="form-control" id="attendanceFilter" style="max-width:170px;"
+                        onchange="filterTable()">
+                        <option value="">All Attendance</option>
+                        <option value="present">Present</option>
+                        <option value="absent">Absent</option>
+                        <option value="not_marked">Not Marked</option>
+                    </select>
+                </div>
+
+                <div class="card">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Participant</th>
+                                    <th>Email</th>
+                                    <th>Event</th>
+                                    <th>Date</th>
+                                    <th>Registration</th>
+                                    <th>Attendance</th>
+                                    <th id="actionsHead">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="regTable">
+                                <tr>
+                                    <td colspan="7">
+                                        <div class="page-loader">
+                                            <div class="loading-spinner"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attendance Modal (Staff/Admin) -->
+    <div class="modal-overlay" id="attendModal">
+        <div class="modal" style="max-width:380px;">
+            <div class="modal-header">
+                <div class="modal-title">Update Attendance</div>
+                <button class="modal-close" onclick="closeAttend()">✕</button>
+            </div>
+            <p id="attendName" style="color:var(--text-muted);margin-bottom:20px;font-size:14px;"></p>
+            <div class="form-group">
+                <label class="form-label">Attendance Status</label>
+                <select id="attendStatus" class="form-control">
+                    <option value="not_marked">Not Marked</option>
+                    <option value="present">Present ✅</option>
+                    <option value="absent">Absent ❌</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Registration Status</label>
+                <select id="regStatus" class="form-control">
+                    <option value="confirmed">Confirmed</option>
+                    <option value="pending">Pending</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAttend()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveAttendance()" id="attendSaveBtn">Update</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/sidebar.js"></script>
+    <script>
+        let allRegs = [], currentUser = null, editingId = null;
+        const ATT_BADGE = { present: 'badge-green', absent: 'badge-red', not_marked: 'badge-orange' };
+        const REG_BADGE = { confirmed: 'badge-green', pending: 'badge-orange', cancelled: 'badge-red' };
+        function fmt(d) { return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+
+        (async () => {
+            currentUser = await Auth.requireAuth();
+            if (!currentUser) return;
+            Sidebar.render(currentUser, 'registrations');
+            const canEdit = ['admin', 'staff'].includes(currentUser.role);
+            if (!canEdit) document.getElementById('actionsHead').textContent = '';
+
+            const [regRes, evRes] = await Promise.all([API.getRegistrations(), API.getEvents()]);
+            allRegs = regRes.data || [];
+
+            (evRes.data || []).forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.id; opt.textContent = e.event_name;
+                document.getElementById('eventFilter').appendChild(opt);
+            });
+
+            renderTable(allRegs, canEdit);
+        })();
+
+        function renderTable(data, canEdit) {
+            const tb = document.getElementById('regTable');
+            if (!data.length) { tb.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📋</div>No registrations found</div></td></tr>'; return; }
+            tb.innerHTML = data.map(r => `<tr>
+    <td><div style="display:flex;align-items:center;gap:8px;">
+      <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#a855f7);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">${r.name[0]}</div>
+      <div class="td-name" style="font-size:13px;">${r.name}</div>
+    </div></td>
+    <td style="color:var(--text-muted);font-size:13px;">${r.email}</td>
+    <td style="font-size:13px;font-weight:500;">${r.event_name}</td>
+    <td style="font-size:12px;color:var(--text-muted);">${fmt(r.event_date)}</td>
+    <td><span class="badge ${REG_BADGE[r.registration_status] || 'badge-blue'}">${r.registration_status}</span></td>
+    <td><span class="badge ${ATT_BADGE[r.attendance_status] || 'badge-orange'}">${r.attendance_status.replace('_', ' ')}</span></td>
+    <td>${canEdit ? `<div class="td-actions">
+      <button class="btn btn-secondary btn-sm btn-icon" onclick="openAttend('${r.id}','${r.name}','${r.attendance_status}','${r.registration_status}')" title="Mark Attendance">📋</button>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="cancelReg('${r.id}')" title="Cancel">🗑️</button>
+    </div>`: '<span style="color:var(--text-muted);font-size:12px;">—</span>'}</td>
+  </tr>`).join('');
+        }
+
+        function filterTable() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            const ev = document.getElementById('eventFilter').value;
+            const at = document.getElementById('attendanceFilter').value;
+            const canEdit = ['admin', 'staff'].includes(currentUser?.role);
+            renderTable(allRegs.filter(r =>
+                (!q || r.name.toLowerCase().includes(q) || r.event_name.toLowerCase().includes(q)) &&
+                (!ev || r.event_id == ev) &&
+                (!at || r.attendance_status === at)
+            ), canEdit);
+        }
+
+        function openAttend(id, name, att, reg) {
+            editingId = id;
+            document.getElementById('attendName').textContent = `Participant: ${name}`;
+            document.getElementById('attendStatus').value = att;
+            document.getElementById('regStatus').value = reg;
+            document.getElementById('attendModal').classList.add('active');
+        }
+        function closeAttend() { document.getElementById('attendModal').classList.remove('active'); editingId = null; }
+
+        async function saveAttendance() {
+            if (!editingId) return;
+            const btn = document.getElementById('attendSaveBtn');
+            btn.innerHTML = '<span class="loading-spinner"></span>'; btn.disabled = true;
+            const res = await API.updateRegistration({
+                id: editingId,
+                attendance_status: document.getElementById('attendStatus').value,
+                registration_status: document.getElementById('regStatus').value,
+            });
+            if (res.success) {
+                Toast.success('Attendance updated.');
+                closeAttend();
+                const fresh = await API.getRegistrations();
+                allRegs = fresh.data || [];
+                renderTable(allRegs, true);
+            } else Toast.error(res.message);
+            btn.innerHTML = 'Update'; btn.disabled = false;
+        }
+
+        async function cancelReg(id) {
+            if (!confirm('Remove this registration?')) return;
+            const res = await API.cancelRegistration(id);
+            if (res.success) {
+                Toast.success('Registration removed.');
+                allRegs = allRegs.filter(r => r.id != id);
+                renderTable(allRegs, true);
+            } else Toast.error(res.message);
+        }
+
+        function exportCSV() {
+            const headers = ['Name', 'Email', 'Event', 'Event Date', 'Registration', 'Attendance'];
+            const rows = allRegs.map(r => [r.name, r.email, r.event_name, r.event_date, r.registration_status, r.attendance_status]);
+            const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+            const a = document.createElement('a');
+            a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+            a.download = 'registrations.csv'; a.click();
+            Toast.success('CSV exported!');
+        }
+    </script>
+</body>
+
+</html>

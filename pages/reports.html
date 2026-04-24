@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reports — EMS</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <aside class="sidebar" id="sidebar"></aside>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <div class="main-content">
+            <nav class="navbar">
+                <div class="navbar-left">
+                    <button class="btn-menu-toggle" id="menuToggle">☰</button>
+                    <div class="navbar-title">Reports & Analytics</div>
+                </div>
+                <div class="navbar-right">
+                    <button class="btn btn-secondary" onclick="exportCSV()">⬇️ Export CSV</button>
+                </div>
+            </nav>
+
+            <div class="page-content">
+                <!-- Report Type Tabs -->
+                <div style="display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;">
+                    <button class="btn btn-primary" id="tabEventWise" onclick="loadReport('event_wise')">📅
+                        Event-Wise</button>
+                    <button class="btn btn-secondary" id="tabDeptWise" onclick="loadReport('department_wise')">📁
+                        Department-Wise</button>
+                    <button class="btn btn-secondary" id="tabAttendance" onclick="loadReport('attendance')">✅
+                        Attendance</button>
+                </div>
+
+                <!-- Summary Cards -->
+                <div class="stats-grid" id="summaryCards" style="margin-bottom:24px;"></div>
+
+                <!-- Table -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title" id="reportTitle">Event-Wise Report</div>
+                            <div class="card-subtitle" id="reportSubtitle">Participation and attendance per event</div>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr id="reportHead"></tr>
+                            </thead>
+                            <tbody id="reportBody">
+                                <tr>
+                                    <td colspan="8">
+                                        <div class="page-loader">
+                                            <div class="loading-spinner"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/sidebar.js"></script>
+    <script src="/js/charts.js"></script>
+    <script>
+        let currentReport = [], currentType = 'event_wise';
+        const STATUS_BADGE = { upcoming: 'badge-blue', ongoing: 'badge-green', completed: 'badge-purple', cancelled: 'badge-red' };
+
+        const REPORT_CONFIG = {
+            event_wise: {
+                title: 'Event-Wise Report',
+                subtitle: 'Participation and attendance per event',
+                headers: ['Event Name', 'Event Date', 'Location', 'Status', 'Registered', 'Attended', 'Capacity'],
+                row: r => `<td class="td-name">${r.event_name}</td>
+      <td>${r.event_date}</td><td>${r.location || '—'}</td>
+      <td><span class="badge ${STATUS_BADGE[r.status] || 'badge-blue'}">${r.status}</span></td>
+      <td>${r.total_registered || 0}</td>
+      <td><span class="badge badge-green">${r.attended || 0}</span></td>
+      <td>${r.capacity}</td>`,
+            },
+            department_wise: {
+                title: 'Department-Wise Report',
+                subtitle: 'Events and participation across departments',
+                headers: ['Department', 'Total Events', 'Total Registrations', 'Total Students'],
+                row: r => `<td class="td-name">📁 ${r.department_name}</td>
+      <td>${r.total_events}</td>
+      <td>${r.total_registrations}</td>
+      <td>${r.total_students}</td>`,
+            },
+            attendance: {
+                title: 'Attendance Report',
+                subtitle: 'Individual attendance status per participant',
+                headers: ['Participant', 'Email', 'Role', 'Event', 'Registration', 'Attendance'],
+                row: r => `<td class="td-name">${r.name}</td>
+      <td style="color:var(--text-muted);font-size:12px;">${r.email}</td>
+      <td><span class="badge badge-cyan">${r.user_role}</span></td>
+      <td>${r.event_name}</td>
+      <td><span class="badge ${r.registration_status === 'confirmed' ? 'badge-green' : 'badge-orange'}">${r.registration_status}</span></td>
+      <td><span class="badge ${r.attendance_status === 'present' ? 'badge-green' : r.attendance_status === 'absent' ? 'badge-red' : 'badge-orange'}">${r.attendance_status.replace('_', ' ')}</span></td>`,
+            },
+        };
+
+        (async () => {
+            const user = await Auth.requireAuth(['admin', 'staff']);
+            if (!user) return;
+            Sidebar.render(user, 'reports');
+            await loadReport('event_wise');
+        })();
+
+        async function loadReport(type) {
+            currentType = type;
+            const cfg = REPORT_CONFIG[type];
+            document.getElementById('reportTitle').textContent = cfg.title;
+            document.getElementById('reportSubtitle').textContent = cfg.subtitle;
+            document.getElementById('reportHead').innerHTML = cfg.headers.map(h => `<th>${h}</th>`).join('');
+            document.getElementById('reportBody').innerHTML = '<tr><td colspan="8"><div class="page-loader"><div class="loading-spinner"></div></div></td></tr>';
+
+            // Tab styling
+            ['tabEventWise', 'tabDeptWise', 'tabAttendance'].forEach(id => document.getElementById(id).className = 'btn btn-secondary');
+            const tabMap = { event_wise: 'tabEventWise', department_wise: 'tabDeptWise', attendance: 'tabAttendance' };
+            document.getElementById(tabMap[type]).className = 'btn btn-primary';
+
+            const res = await API.getReport(type);
+            currentReport = res.data || [];
+
+            if (!currentReport.length) {
+                document.getElementById('reportBody').innerHTML = `<tr><td colspan="${cfg.headers.length}"><div class="empty-state"><div class="empty-icon">📊</div>No data available</div></td></tr>`;
+                document.getElementById('summaryCards').innerHTML = '';
+                return;
+            }
+
+            document.getElementById('reportBody').innerHTML = currentReport.map(r => `<tr>${cfg.row(r)}</tr>`).join('');
+
+            // Summary cards
+            let cards = '';
+            if (type === 'event_wise') {
+                const total = currentReport.reduce((s, r) => s + parseInt(r.total_registered || 0), 0);
+                const attended = currentReport.reduce((s, r) => s + parseInt(r.attended || 0), 0);
+                cards = `
+      <div class="stat-card" style="--card-color1:#4f8ef7;--card-color2:#a855f7;"><div class="stat-icon">📅</div><div class="stat-value">${currentReport.length}</div><div class="stat-label">Total Events</div></div>
+      <div class="stat-card" style="--card-color1:#22c55e;--card-color2:#06b6d4;"><div class="stat-icon">📝</div><div class="stat-value">${total}</div><div class="stat-label">Total Registrations</div></div>
+      <div class="stat-card" style="--card-color1:#f97316;--card-color2:#ef4444;"><div class="stat-icon">✅</div><div class="stat-value">${attended}</div><div class="stat-label">Total Attended</div></div>
+      <div class="stat-card" style="--card-color1:#a855f7;--card-color2:#ec4899;"><div class="stat-icon">📊</div><div class="stat-value">${total > 0 ? Math.round(attended / total * 100) : 0}%</div><div class="stat-label">Attendance Rate</div></div>`;
+            } else if (type === 'department_wise') {
+                cards = `
+      <div class="stat-card" style="--card-color1:#4f8ef7;--card-color2:#a855f7;"><div class="stat-icon">📁</div><div class="stat-value">${currentReport.length}</div><div class="stat-label">Departments</div></div>
+      <div class="stat-card" style="--card-color1:#22c55e;--card-color2:#06b6d4;"><div class="stat-icon">📅</div><div class="stat-value">${currentReport.reduce((s, r) => s + parseInt(r.total_events || 0), 0)}</div><div class="stat-label">Total Events</div></div>`;
+            }
+            document.getElementById('summaryCards').innerHTML = cards;
+        }
+
+        function exportCSV() {
+            if (!currentReport.length) { Toast.error('No data to export.'); return; }
+            const cfg = REPORT_CONFIG[currentType];
+            const rows = currentReport.map(r => {
+                if (currentType === 'event_wise') return [r.event_name, r.event_date, r.location || '', r.status, r.total_registered || 0, r.attended || 0, r.capacity];
+                if (currentType === 'department_wise') return [r.department_name, r.total_events, r.total_registrations, r.total_students];
+                if (currentType === 'attendance') return [r.name, r.email, r.user_role, r.event_name, r.registration_status, r.attendance_status];
+                return [];
+            });
+            const csv = [cfg.headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+            const a = document.createElement('a');
+            a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+            a.download = `ems_report_${currentType}.csv`; a.click();
+            Toast.success('Report exported!');
+        }
+    </script>
+</body>
+
+</html>

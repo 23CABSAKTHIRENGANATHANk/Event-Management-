@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Events — EMS</title>
+    <link rel="stylesheet" href="/css/style.css" />
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <aside class="sidebar" id="sidebar"></aside>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <div class="main-content">
+            <nav class="navbar">
+                <div class="navbar-left">
+                    <button class="btn-menu-toggle" id="menuToggle">☰</button>
+                    <div class="navbar-title">Events</div>
+                </div>
+                <div class="navbar-right">
+                    <div id="addEventBtn" style="display:none;">
+                        <button class="btn btn-primary" onclick="openModal()">+ Add Event</button>
+                    </div>
+                </div>
+            </nav>
+
+            <div class="page-content">
+                <div class="toolbar">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" class="form-control" id="searchInput" placeholder="Search events…"
+                            oninput="filterTable()" />
+                    </div>
+                    <select class="form-control" id="statusFilter" style="max-width:160px;" onchange="filterTable()">
+                        <option value="">All Statuses</option>
+                        <option value="upcoming">Upcoming</option>
+                        <option value="ongoing">Ongoing</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+
+                <div class="card">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Event</th>
+                                    <th>Date</th>
+                                    <th>Location</th>
+                                    <th>Department</th>
+                                    <th>Capacity</th>
+                                    <th>Status</th>
+                                    <th id="actionsHead">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="eventsTable">
+                                <tr>
+                                    <td colspan="7">
+                                        <div class="page-loader">
+                                            <div class="loading-spinner"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title" id="modalTitle">Add Event</div>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <form onsubmit="saveEvent(event)">
+                <input type="hidden" id="eventId" />
+                <div class="form-group"><label class="form-label">Event Name *</label><input type="text" id="eventName"
+                        class="form-control" required /></div>
+                <div class="form-group"><label class="form-label">Description</label><textarea id="eventDesc"
+                        class="form-control" rows="3"></textarea></div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Event Date *</label><input type="date"
+                            id="eventDate" class="form-control" required /></div>
+                    <div class="form-group"><label class="form-label">Registration Deadline</label><input type="date"
+                            id="eventDeadline" class="form-control" /></div>
+                </div>
+                <div class="form-group"><label class="form-label">Location</label><input type="text" id="eventLocation"
+                        class="form-control" placeholder="Venue / Hall" /></div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Department</label><select id="eventDept"
+                            class="form-control">
+                            <option value="">— Select —</option>
+                        </select></div>
+                    <div class="form-group"><label class="form-label">Staff Coordinator</label><select id="eventStaff"
+                            class="form-control">
+                            <option value="">— Select —</option>
+                        </select></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Capacity</label><input type="number"
+                            id="eventCapacity" class="form-control" value="100" min="1" /></div>
+                    <div class="form-group"><label class="form-label">Status</label>
+                        <select id="eventStatus" class="form-control">
+                            <option value="upcoming">Upcoming</option>
+                            <option value="ongoing">Ongoing</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="saveBtn">Save Event</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/sidebar.js"></script>
+    <script>
+        let allEvents = [], currentUser = null;
+        const STATUS_BADGE = { upcoming: 'badge-blue', ongoing: 'badge-green', completed: 'badge-purple', cancelled: 'badge-red' };
+        function fmt(d) { return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+
+        (async () => {
+            currentUser = await Auth.requireAuth();
+            if (!currentUser) return;
+            Sidebar.render(currentUser, 'events');
+            const canEdit = ['admin', 'staff'].includes(currentUser.role);
+            if (canEdit) document.getElementById('addEventBtn').style.display = '';
+            if (!canEdit) document.getElementById('actionsHead').style.display = 'none';
+
+            const [evRes, deptRes, staffRes] = await Promise.all([
+                API.getEvents(), API.getDepartments(), API.getUsers('role=staff')
+            ]);
+            allEvents = evRes.data || [];
+
+            // Populate dept/staff selects
+            if (deptRes.data) deptRes.data.forEach(d => {
+                ['eventDept'].forEach(id => {
+                    const opt = document.createElement('option');
+                    opt.value = d.id; opt.textContent = d.department_name;
+                    document.getElementById(id).appendChild(opt);
+                });
+            });
+            if (staffRes.data) staffRes.data.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id; opt.textContent = s.name;
+                document.getElementById('eventStaff').appendChild(opt);
+            });
+
+            renderTable(allEvents, canEdit);
+        })();
+
+        function renderTable(events, canEdit) {
+            const tb = document.getElementById('eventsTable');
+            if (!events.length) { tb.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📭</div>No events found</div></td></tr>'; return; }
+            tb.innerHTML = events.map(e => `<tr>
+    <td class="td-name">${e.event_name}</td>
+    <td>${fmt(e.event_date)}</td>
+    <td>${e.location || '—'}</td>
+    <td>${e.department_name || '—'}</td>
+    <td>${e.registered_count || 0}/${e.capacity}</td>
+    <td><span class="badge ${STATUS_BADGE[e.status] || 'badge-blue'}">${e.status}</span></td>
+    <td>${canEdit ? `<div class="td-actions">
+      <button class="btn btn-secondary btn-sm btn-icon" onclick="editEvent('${e.id}')" title="Edit">✏️</button>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="deleteEvent('${e.id}')" title="Delete">🗑️</button>
+    </div>` : '<span style="color:var(--text-muted);font-size:12px;">—</span>'}</td>
+  </tr>`).join('');
+        }
+
+        function filterTable() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            const s = document.getElementById('statusFilter').value;
+            const filtered = allEvents.filter(e =>
+                (!q || e.event_name.toLowerCase().includes(q) || (e.location || '').toLowerCase().includes(q)) &&
+                (!s || e.status === s)
+            );
+            renderTable(filtered, ['admin', 'staff'].includes(currentUser?.role));
+        }
+
+        function openModal(reset = true) {
+            if (reset) {
+                document.getElementById('modalTitle').textContent = 'Add Event';
+                document.getElementById('eventId').value = '';
+                ['eventName', 'eventDesc', 'eventLocation'].forEach(id => document.getElementById(id).value = '');
+                document.getElementById('eventDate').value = '';
+                document.getElementById('eventDeadline').value = '';
+                document.getElementById('eventCapacity').value = 100;
+                document.getElementById('eventStatus').value = 'upcoming';
+                document.getElementById('eventDept').value = '';
+                document.getElementById('eventStaff').value = '';
+            }
+            document.getElementById('modalOverlay').classList.add('active');
+        }
+        function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
+
+        function editEvent(id) {
+            const e = allEvents.find(x => x.id == id);
+            if (!e) return;
+            document.getElementById('modalTitle').textContent = 'Edit Event';
+            document.getElementById('eventId').value = e.id;
+            document.getElementById('eventName').value = e.event_name;
+            document.getElementById('eventDesc').value = e.description || '';
+            document.getElementById('eventDate').value = e.event_date;
+            document.getElementById('eventDeadline').value = e.registration_deadline || '';
+            document.getElementById('eventLocation').value = e.location || '';
+            document.getElementById('eventDept').value = e.department_id || '';
+            document.getElementById('eventStaff').value = e.staff_id || '';
+            document.getElementById('eventCapacity').value = e.capacity || 100;
+            document.getElementById('eventStatus').value = e.status || 'upcoming';
+            openModal(false);
+        }
+
+        async function saveEvent(e) {
+            e.preventDefault();
+            const btn = document.getElementById('saveBtn');
+            btn.innerHTML = '<span class="loading-spinner"></span>'; btn.disabled = true;
+            const id = document.getElementById('eventId').value;
+            const body = {
+                event_name: document.getElementById('eventName').value,
+                description: document.getElementById('eventDesc').value,
+                event_date: document.getElementById('eventDate').value,
+                registration_deadline: document.getElementById('eventDeadline').value || null,
+                location: document.getElementById('eventLocation').value,
+                department_id: document.getElementById('eventDept').value || null,
+                staff_id: document.getElementById('eventStaff').value || null,
+                capacity: parseInt(document.getElementById('eventCapacity').value) || 100,
+                status: document.getElementById('eventStatus').value,
+            };
+            if (id) body.id = id;
+            const res = id ? await API.updateEvent(body) : await API.createEvent(body);
+            if (res.success) {
+                Toast.success(res.message);
+                closeModal();
+                const fresh = await API.getEvents();
+                allEvents = fresh.data || [];
+                renderTable(allEvents, true);
+            } else { Toast.error(res.message); }
+            btn.innerHTML = 'Save Event'; btn.disabled = false;
+        }
+
+        async function deleteEvent(id) {
+            if (!confirm('Delete this event? All registrations will also be removed.')) return;
+            const res = await API.deleteEvent(id);
+            if (res.success) {
+                Toast.success('Event deleted.');
+                allEvents = allEvents.filter(e => e.id != id);
+                renderTable(allEvents, true);
+            } else Toast.error(res.message);
+        }
+    </script>
+</body>
+
+</html>

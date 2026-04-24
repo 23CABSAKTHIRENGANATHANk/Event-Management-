@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Participant Dashboard — EMS</title>
+    <link rel="stylesheet" href="/css/style.css" />
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <aside class="sidebar" id="sidebar"></aside>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <div class="main-content">
+            <nav class="navbar">
+                <div class="navbar-left">
+                    <button class="btn-menu-toggle" id="menuToggle">☰</button>
+                    <div>
+                        <div class="navbar-title">Participant Dashboard</div>
+                        <div class="navbar-subtitle">Discover and join public events</div>
+                    </div>
+                </div>
+                <div class="navbar-right">
+                    <div id="navUser" style="font-size:14px;color:var(--text-muted);"></div>
+                </div>
+            </nav>
+
+            <div class="page-content">
+                <div class="stats-grid" id="statsGrid"></div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">🌍 Public Events</div>
+                            <a href="/pages/events.html" class="btn btn-primary btn-sm">Browse All</a>
+                        </div>
+                        <div id="publicEvents">
+                            <div class="page-loader">
+                                <div class="loading-spinner"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">🎟️ My Registrations</div>
+                            <a href="/pages/registrations.html" class="btn btn-secondary btn-sm">View All</a>
+                        </div>
+                        <div id="myRegs">
+                            <div class="page-loader">
+                                <div class="loading-spinner"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/sidebar.js"></script>
+    <script>
+        function fmt(d) { return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+
+        (async () => {
+            const user = await Auth.requireAuth(['participant']);
+            if (!user) return;
+            Sidebar.render(user, 'dashboard');
+            document.getElementById('navUser').textContent = user.name;
+
+            const [evRes, regRes] = await Promise.all([API.getEvents(), API.getRegistrations()]);
+            const events = evRes.data || [];
+            const myRegs = regRes.data || [];
+            const myEventIds = new Set(myRegs.map(r => r.event_id));
+
+            const statCards = [
+                { label: 'Events Available', value: events.length, icon: '📅', c1: '#4f8ef7', c2: '#a855f7' },
+                { label: 'My Registrations', value: myRegs.length, icon: '🎟️', c1: '#22c55e', c2: '#06b6d4' },
+            ];
+            document.getElementById('statsGrid').innerHTML = statCards.map(c => `
+    <div class="stat-card" style="--card-color1:${c.c1};--card-color2:${c.c2};">
+      <div class="stat-icon">${c.icon}</div>
+      <div class="stat-value">${c.value}</div>
+      <div class="stat-label">${c.label}</div>
+    </div>`).join('');
+
+            document.getElementById('publicEvents').innerHTML = events.slice(0, 5).map(e => `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+      <div style="width:42px;height:42px;border-radius:10px;background:var(--bg-card-hover);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📅</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:14px;">${e.event_name}</div>
+        <div style="font-size:12px;color:var(--text-muted);">${e.location || 'TBD'} · ${fmt(e.event_date)}</div>
+      </div>
+      ${myEventIds.has(e.id)
+                    ? '<span class="badge badge-green">Joined ✓</span>'
+                    : `<button class="btn btn-primary btn-sm" onclick="registerEvent('${e.id}',this)">Join</button>`}
+    </div>`).join('') || '<div class="empty-state">No events available</div>';
+
+            document.getElementById('myRegs').innerHTML = myRegs.length
+                ? myRegs.slice(0, 6).map(r => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+        <div style="font-size:20px;">🎟️</div>
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:14px;">${r.event_name}</div>
+          <div style="font-size:12px;color:var(--text-muted);">${fmt(r.event_date)}</div>
+        </div>
+        <span class="badge badge-green">${r.registration_status}</span>
+      </div>`).join('')
+                : '<div class="empty-state"><div class="empty-icon">📋</div>No registrations yet</div>';
+        })();
+
+        async function registerEvent(eventId, btn) {
+            btn.disabled = true; btn.innerHTML = '<span class="loading-spinner"></span>';
+            const res = await API.registerForEvent({ event_id: eventId });
+            if (res.success) {
+                Toast.success('You joined the event!');
+                btn.outerHTML = '<span class="badge badge-green">Joined ✓</span>';
+            } else {
+                Toast.error(res.message || 'Failed to join.');
+                btn.disabled = false; btn.innerHTML = 'Join';
+            }
+        }
+    </script>
+</body>
+
+</html>

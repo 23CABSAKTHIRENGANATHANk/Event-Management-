@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — Event Management System</title>
+  <meta name="description" content="Login to the Event Management System. Manage events, registrations, departments and more." />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<div class="login-page">
+  <div class="login-bg"></div>
+
+  <!-- Animated orbs -->
+  <div style="position:absolute;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(79,142,247,0.07),transparent);top:-100px;right:-100px;animation:pulse 4s ease-in-out infinite;"></div>
+  <div style="position:absolute;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(168,85,247,0.07),transparent);bottom:-80px;left:-80px;animation:pulse 5s ease-in-out infinite 1s;"></div>
+
+  <div class="login-card glass animate-slide">
+    <div class="login-logo">
+      <div class="logo-big floating">
+        <img src="/assets/images/logo.png" alt="EMS Logo">
+      </div>
+      <h1>Event Management</h1>
+      <p>Sign in to your account to continue</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="login-tabs">
+      <div class="login-tab active" id="tabLogin" onclick="switchTab('login')">Sign In</div>
+      <div class="login-tab" id="tabRegister" onclick="switchTab('register')">Register</div>
+    </div>
+
+    <!-- LOGIN FORM -->
+    <form id="loginForm" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label class="form-label">Username or Email</label>
+        <input type="text" id="loginUsername" class="form-control" placeholder="Enter your username or email" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" id="loginPassword" class="form-control" placeholder="Enter your password" required />
+      </div>
+      <button type="submit" class="login-btn" id="loginBtn">Sign In</button>
+
+    </form>
+
+    <!-- REGISTER FORM (hidden by default) -->
+    <form id="registerForm" style="display:none;" onsubmit="handleRegister(event)">
+      <div class="form-group">
+        <label class="form-label">Full Name</label>
+        <input type="text" id="regName" class="form-control" placeholder="Your full name" required />
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Username</label>
+          <input type="text" id="regUsername" class="form-control" placeholder="Choose a username" required />
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Email</label>
+          <input type="email" id="regEmail" class="form-control" placeholder="your@email.com" required />
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:18px;">
+        <label class="form-label">Password</label>
+        <input type="password" id="regPassword" class="form-control" placeholder="Create a password" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Account Type</label>
+        <select id="regRole" class="form-control">
+          <option value="student">Student</option>
+          <option value="participant">Participant</option>
+        </select>
+      </div>
+      <button type="submit" class="login-btn" id="registerBtn">Create Account</button>
+    </form>
+  </div>
+</div>
+
+<style>
+@keyframes pulse { 0%,100%{transform:scale(1);opacity:0.6} 50%{transform:scale(1.1);opacity:0.9} }
+</style>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+  // Redirect if already logged in
+  (async () => {
+    const res = await API.session();
+    if (res.logged_in) {
+      window.location.href = Auth.getDashboardPath(res.user.role);
+    }
+  })();
+
+  function switchTab(tab) {
+    const isLogin = tab === 'login';
+    document.getElementById('loginForm').style.display    = isLogin ? 'block' : 'none';
+    document.getElementById('registerForm').style.display = isLogin ? 'none' : 'block';
+    document.getElementById('tabLogin').classList.toggle('active', isLogin);
+    document.getElementById('tabRegister').classList.toggle('active', !isLogin);
+  }
+
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    const btn = document.getElementById('loginBtn');
+    btn.innerHTML = '<span class="loading-spinner"></span> Signing in…';
+    btn.disabled = true;
+
+    const res = await Auth.login(
+      document.getElementById('loginUsername').value.trim(),
+      document.getElementById('loginPassword').value
+    );
+
+    if (res.success) {
+      Toast.success('Welcome back, ' + res.user.name + '!');
+      setTimeout(() => {
+        window.location.href = Auth.getDashboardPath(res.user.role);
+      }, 600);
+    } else {
+      Toast.error(res.message || 'Login failed.');
+      btn.innerHTML = 'Sign In';
+      btn.disabled = false;
+    }
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    const btn = document.getElementById('registerBtn');
+    btn.innerHTML = '<span class="loading-spinner"></span> Creating…';
+    btn.disabled = true;
+
+    const res = await API.register({
+      name:     document.getElementById('regName').value.trim(),
+      username: document.getElementById('regUsername').value.trim(),
+      email:    document.getElementById('regEmail').value.trim(),
+      password: document.getElementById('regPassword').value,
+      role:     document.getElementById('regRole').value,
+    });
+
+    if (res.success) {
+      Toast.success('Account created! Please log in.');
+      setTimeout(() => switchTab('login'), 1200);
+    } else {
+      Toast.error(res.message || 'Registration failed.');
+    }
+    btn.innerHTML = 'Create Account';
+    btn.disabled = false;
+  }
+</script>
+</body>
+</html>

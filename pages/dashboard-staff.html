@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Staff Dashboard — EMS</title>
+    <link rel="stylesheet" href="/css/style.css" />
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <aside class="sidebar" id="sidebar"></aside>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <div class="main-content">
+            <nav class="navbar">
+                <div class="navbar-left">
+                    <button class="btn-menu-toggle" id="menuToggle">☰</button>
+                    <div>
+                        <div class="navbar-title">Staff Dashboard</div>
+                        <div class="navbar-subtitle">Manage your assigned events</div>
+                    </div>
+                </div>
+                <div class="navbar-right">
+                    <div id="navUser" style="font-size:14px;color:var(--text-muted);"></div>
+                </div>
+            </nav>
+
+            <div class="page-content">
+                <div class="stats-grid" id="statsGrid"></div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">My Assigned Events</div>
+                            <a href="/pages/events.html" class="btn btn-secondary btn-sm">View All</a>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Event</th>
+                                        <th>Date</th>
+                                        <th>Registered</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="myEventsTable"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">Recent Participants</div>
+                            <a href="/pages/registrations.html" class="btn btn-secondary btn-sm">View All</a>
+                        </div>
+                        <div id="recentParticipants"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/sidebar.js"></script>
+    <script>
+        const STATUS_BADGE = { upcoming: 'badge-blue', ongoing: 'badge-green', completed: 'badge-purple', cancelled: 'badge-red' };
+        function fmt(d) { return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }); }
+
+        (async () => {
+            const user = await Auth.requireAuth(['staff']);
+            if (!user) return;
+            Sidebar.render(user, 'dashboard');
+            document.getElementById('navUser').textContent = user.name;
+
+            const [dashRes, evRes, regRes] = await Promise.all([
+                API.dashboard(), API.getEvents(), API.getRegistrations()
+            ]);
+
+            const d = dashRes.data || {};
+            const statCards = [
+                { label: 'My Events', value: (evRes.data || []).length, icon: '📅', c1: '#4f8ef7', c2: '#a855f7' },
+                { label: 'Total Registered', value: (regRes.data || []).length, icon: '📝', c1: '#22c55e', c2: '#06b6d4' },
+                { label: 'Upcoming', value: d.upcoming_events || 0, icon: '🚀', c1: '#a855f7', c2: '#ec4899' },
+                { label: 'Completed', value: d.completed_events || 0, icon: '✅', c1: '#f97316', c2: '#ef4444' },
+            ];
+            document.getElementById('statsGrid').innerHTML = statCards.map(c => `
+    <div class="stat-card" style="--card-color1:${c.c1};--card-color2:${c.c2};">
+      <div class="stat-icon">${c.icon}</div>
+      <div class="stat-value">${c.value}</div>
+      <div class="stat-label">${c.label}</div>
+    </div>`).join('');
+
+            const events = evRes.data || [];
+            document.getElementById('myEventsTable').innerHTML = events.length
+                ? events.slice(0, 8).map(e => `<tr>
+        <td class="td-name">${e.event_name}</td>
+        <td>${fmt(e.event_date)}</td>
+        <td>${e.registered_count || 0} / ${e.capacity}</td>
+        <td><span class="badge ${STATUS_BADGE[e.status] || 'badge-blue'}">${e.status}</span></td>
+      </tr>`).join('')
+                : '<tr><td colspan="4"><div class="empty-state">No events assigned yet</div></td></tr>';
+
+            const regs = regRes.data || [];
+            document.getElementById('recentParticipants').innerHTML = regs.slice(0, 6).map(r => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+      <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#a855f7);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">${r.name[0]}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:14px;">${r.name}</div>
+        <div style="font-size:12px;color:var(--text-muted);">${r.event_name}</div>
+      </div>
+      <span class="badge ${r.attendance_status === 'present' ? 'badge-green' : r.attendance_status === 'absent' ? 'badge-red' : 'badge-orange'}">${r.attendance_status.replace('_', ' ')}</span>
+    </div>`).join('') || '<div class="empty-state">No participants yet</div>';
+        })();
+    </script>
+</body>
+
+</html>

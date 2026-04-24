@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Departments — EMS</title>
+    <link rel="stylesheet" href="/css/style.css" />
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <aside class="sidebar" id="sidebar"></aside>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <div class="main-content">
+            <nav class="navbar">
+                <div class="navbar-left">
+                    <button class="btn-menu-toggle" id="menuToggle">☰</button>
+                    <div class="navbar-title">Departments</div>
+                </div>
+                <div class="navbar-right">
+                    <button class="btn btn-primary" onclick="openModal()">+ Add Department</button>
+                </div>
+            </nav>
+
+            <div class="page-content">
+                <div class="toolbar">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" class="form-control" id="searchInput" placeholder="Search departments…"
+                            oninput="filterTable()" />
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Department Name</th>
+                                    <th>Description</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deptTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title" id="modalTitle">Add Department</div>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <form onsubmit="saveDept(event)">
+                <input type="hidden" id="deptId" />
+                <div class="form-group"><label class="form-label">Department Name *</label><input type="text"
+                        id="deptName" class="form-control" required /></div>
+                <div class="form-group"><label class="form-label">Description</label><textarea id="deptDesc"
+                        class="form-control" rows="3" placeholder="Brief description…"></textarea></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="saveBtn">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/sidebar.js"></script>
+    <script>
+        let allDepts = [];
+        function fmt(d) { return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+
+        (async () => {
+            const user = await Auth.requireAuth(['admin']);
+            if (!user) return;
+            Sidebar.render(user, 'departments');
+            await loadDepts();
+        })();
+
+        async function loadDepts() {
+            const res = await API.getDepartments();
+            allDepts = res.data || [];
+            renderTable(allDepts);
+        }
+
+        function renderTable(depts) {
+            const tb = document.getElementById('deptTable');
+            if (!depts.length) { tb.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📁</div>No departments yet</div></td></tr>'; return; }
+            tb.innerHTML = depts.map((d, i) => `<tr>
+    <td style="color:var(--text-muted);">${i + 1}</td>
+    <td class="td-name">📁 ${d.department_name}</td>
+    <td style="color:var(--text-muted);max-width:280px;">${d.description || '—'}</td>
+    <td>${fmt(d.created_at)}</td>
+    <td><div class="td-actions">
+      <button class="btn btn-secondary btn-sm btn-icon" onclick="editDept('${d.id}')" title="Edit">✏️</button>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="deleteDept('${d.id}')" title="Delete">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+        }
+
+        function filterTable() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            renderTable(allDepts.filter(d => d.department_name.toLowerCase().includes(q)));
+        }
+
+        function openModal(reset = true) {
+            if (reset) {
+                document.getElementById('modalTitle').textContent = 'Add Department';
+                document.getElementById('deptId').value = '';
+                document.getElementById('deptName').value = '';
+                document.getElementById('deptDesc').value = '';
+            }
+            document.getElementById('modalOverlay').classList.add('active');
+        }
+        function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
+
+        function editDept(id) {
+            const d = allDepts.find(x => x.id == id); if (!d) return;
+            document.getElementById('modalTitle').textContent = 'Edit Department';
+            document.getElementById('deptId').value = d.id;
+            document.getElementById('deptName').value = d.department_name;
+            document.getElementById('deptDesc').value = d.description || '';
+            openModal(false);
+        }
+
+        async function saveDept(e) {
+            e.preventDefault();
+            const btn = document.getElementById('saveBtn');
+            btn.innerHTML = '<span class="loading-spinner"></span>'; btn.disabled = true;
+            const id = document.getElementById('deptId').value;
+            const body = { department_name: document.getElementById('deptName').value, description: document.getElementById('deptDesc').value };
+            if (id) body.id = id;
+            const res = id ? await API.updateDepartment(body) : await API.createDepartment(body);
+            if (res.success) { Toast.success(res.message); closeModal(); await loadDepts(); }
+            else Toast.error(res.message);
+            btn.innerHTML = 'Save'; btn.disabled = false;
+        }
+
+        async function deleteDept(id) {
+            if (!confirm('Delete this department? Events in this department will be unlinked.')) return;
+            const res = await API.deleteDepartment(id);
+            if (res.success) { Toast.success('Department deleted.'); await loadDepts(); }
+            else Toast.error(res.message);
+        }
+    </script>
+</body>
+
+</html>

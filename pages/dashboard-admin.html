@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard — EMS</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <aside class="sidebar" id="sidebar"></aside>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <div class="main-content">
+            <nav class="navbar">
+                <div class="navbar-left">
+                    <button class="btn-menu-toggle" id="menuToggle">☰</button>
+                    <div>
+                        <div class="navbar-title">Admin Dashboard</div>
+                        <div class="navbar-subtitle">Welcome back! Here's what's happening.</div>
+                    </div>
+                </div>
+                <div class="navbar-right">
+                    <div id="navUser" style="font-size:14px;color:var(--text-muted);"></div>
+                </div>
+            </nav>
+
+            <div class="page-content">
+                <!-- Stats Grid -->
+                <div class="stats-grid" id="statsGrid">
+                    <div class="page-loader">
+                        <div class="loading-spinner"></div> Loading...
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="grid-2" style="margin-bottom:24px;">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-title">Events by Department</div>
+                                <div class="card-subtitle">Distribution across departments</div>
+                            </div>
+                        </div>
+                        <div class="chart-wrapper" style="height:220px;">
+                            <canvas id="deptChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-title">Registration Trend</div>
+                                <div class="card-subtitle">Last 6 months</div>
+                            </div>
+                        </div>
+                        <div class="chart-wrapper" style="height:220px;">
+                            <canvas id="trendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity Row -->
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">Recent Registrations</div>
+                            <a href="/pages/registrations.html" class="btn btn-secondary btn-sm">View All</a>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Event</th>
+                                        <th>Role</th>
+                                        <th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recentRegTable">
+                                    <tr>
+                                        <td colspan="4" class="page-loader">
+                                            <div class="loading-spinner"></div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">Upcoming Events</div>
+                            <a href="/pages/events.html" class="btn btn-secondary btn-sm">View All</a>
+                        </div>
+                        <div id="upcomingEvents">
+                            <div class="page-loader">
+                                <div class="loading-spinner"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/sidebar.js"></script>
+    <script src="/js/charts.js"></script>
+    <script>
+        const STAT_CONFIG = [
+            { key: 'total_events', label: 'Total Events', icon: '📅', c1: '#4f8ef7', c2: '#a855f7' },
+            { key: 'total_students', label: 'Total Students', icon: '🎓', c1: '#22c55e', c2: '#06b6d4' },
+            { key: 'total_staff', label: 'Total Staff', icon: '👩‍🏫', c1: '#a855f7', c2: '#ec4899' },
+            { key: 'total_registrations', label: 'Total Registrations', icon: '📝', c1: '#f97316', c2: '#ef4444' },
+            { key: 'total_departments', label: 'Departments', icon: '📁', c1: '#06b6d4', c2: '#4f8ef7' },
+            { key: 'upcoming_events', label: 'Upcoming Events', icon: '🚀', c1: '#22c55e', c2: '#4f8ef7' },
+        ];
+
+        const STATUS_BADGE = {
+            upcoming: 'badge-blue', ongoing: 'badge-green', completed: 'badge-purple', cancelled: 'badge-red'
+        };
+        const ROLE_BADGE = { admin: 'badge-red', staff: 'badge-orange', student: 'badge-blue', participant: 'badge-cyan' };
+
+        function fmt(d) { return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+
+        (async () => {
+            const user = await Auth.requireAuth(['admin']);
+            if (!user) return;
+            Sidebar.render(user, 'dashboard');
+            document.getElementById('navUser').textContent = user.name;
+
+            const res = await API.dashboard();
+            if (!res.success) { Toast.error('Failed to load dashboard'); return; }
+            const d = res.data;
+
+            // Stats
+            document.getElementById('statsGrid').innerHTML = STAT_CONFIG.map(c => `
+    <div class="stat-card" style="--card-color1:${c.c1};--card-color2:${c.c2};">
+      <div class="stat-icon">${c.icon}</div>
+      <div class="stat-value">${d[c.key] ?? 0}</div>
+      <div class="stat-label">${c.label}</div>
+    </div>`).join('');
+
+            // Charts
+            if (d.dept_chart?.length) Charts.renderDepartmentChart('deptChart', d.dept_chart);
+            if (d.trend?.length) Charts.renderTrendChart('trendChart', d.trend);
+
+            // Recent registrations
+            const rr = d.recent_registrations || [];
+            document.getElementById('recentRegTable').innerHTML = rr.length
+                ? rr.map(r => `<tr>
+        <td class="td-name">${r.user_name}</td>
+        <td>${r.event_name}</td>
+        <td><span class="badge ${ROLE_BADGE[r.user_role] || 'badge-blue'}">${r.user_role}</span></td>
+        <td>${fmt(r.created_at)}</td>
+      </tr>`).join('')
+                : '<tr><td colspan="4"><div class="empty-state">No registrations yet</div></td></tr>';
+
+            // Upcoming events
+            const ev = d.recent_events || [];
+            document.getElementById('upcomingEvents').innerHTML = ev.length
+                ? ev.map(e => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+        <div style="width:42px;height:42px;border-radius:10px;background:var(--bg-card-hover);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📅</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:14px;">${e.event_name}</div>
+          <div style="font-size:12px;color:var(--text-muted);">${e.location} · ${fmt(e.event_date)}</div>
+        </div>
+        <span class="badge ${STATUS_BADGE[e.status] || 'badge-blue'}">${e.status}</span>
+      </div>`).join('')
+                : '<div class="empty-state">No events found</div>';
+        })();
+    </script>
+</body>
+
+</html>
