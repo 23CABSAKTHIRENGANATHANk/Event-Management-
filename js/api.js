@@ -3,14 +3,18 @@
  * All fetch calls go through this module
  */
 
-const BASE = '';  // Same-origin, Python Flask server
+const BASE = '';  // Same-origin, calls the Python Flask server directly
 
 const API = {
+  /**
+   * Core request handler. 
+   * Uses standard fetch with credentials to support Flask sessions.
+   */
   async request(endpoint, method = 'GET', body = null) {
     const options = {
       method,
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
+      credentials: 'same-origin', // Essential for sending/receiving session cookies
     };
     if (body) options.body = JSON.stringify(body);
 
