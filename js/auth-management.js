@@ -6,7 +6,11 @@
 let allUsers = [];
 const ROLE_BADGE = { admin: 'badge-red', staff: 'badge-orange', student: 'badge-blue', participant: 'badge-cyan' };
 
-function fmt(d) { return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+function fmt(d) { 
+    if (!d) return 'N/A';
+    const date = (d.$date) ? new Date(d.$date) : new Date(d);
+    return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 const AuthManagement = {
     async init() {
@@ -93,7 +97,7 @@ const AuthManagement = {
         document.getElementById('editRole').value = u.role;
         document.getElementById('editDept').value = u.department_id || '';
 
-        document.getElementById('editModal').classList.add('open');
+        document.getElementById('editModalOverlay').classList.add('active');
     },
 
     async handleUpdate(e) {
@@ -123,7 +127,7 @@ const AuthManagement = {
 };
 
 function closeModal() {
-    document.getElementById('editModal').classList.remove('open');
+    document.getElementById('editModalOverlay').classList.remove('active');
 }
 
 // Global scope for onclick
